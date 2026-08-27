@@ -1,30 +1,61 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-
+import 'package:provider/provider.dart';
 import 'package:saferoute/main.dart';
+import 'package:saferoute/providers/crime_data_provider.dart';
+import 'package:saferoute/providers/location_provider.dart';
+import 'package:saferoute/providers/route_provider.dart';
+import 'package:saferoute/screens/splash_screen.dart';
+import 'package:saferoute/utils/app_theme.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  group('SafeRouteApp', () {
+    // The splash screen holds a timer that navigates to the home screen, and
+    // the real home screen reaches for GPS and the network. Replacing the tree
+    // disposes the splash screen, which cancels that timer, so these tests
+    // stay on the first screen.
+    Future<void> disposeApp(WidgetTester tester) =>
+        tester.pumpWidget(const SizedBox.shrink());
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+    testWidgets('starts on the splash screen', (tester) async {
+      await tester.pumpWidget(const SafeRouteApp());
+      await tester.pump();
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
+      expect(find.byType(SplashScreen), findsOneWidget);
+      expect(find.text('SafeRoute'), findsOneWidget);
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+      await disposeApp(tester);
+    });
+
+    testWidgets('provides the app state to the screens below it', (
+      tester,
+    ) async {
+      await tester.pumpWidget(const SafeRouteApp());
+      await tester.pump();
+
+      final BuildContext context = tester.element(find.byType(SplashScreen));
+
+      expect(context.read<LocationProvider>(), isNotNull);
+      expect(context.read<RouteProvider>(), isNotNull);
+      expect(context.read<CrimeDataProvider>(), isNotNull);
+
+      await disposeApp(tester);
+    });
+
+    testWidgets('applies the app theme and hides the debug banner', (
+      tester,
+    ) async {
+      await tester.pumpWidget(const SafeRouteApp());
+      await tester.pump();
+
+      final MaterialApp app = tester.widget<MaterialApp>(
+        find.byType(MaterialApp),
+      );
+
+      expect(app.theme, AppTheme.light);
+      expect(app.debugShowCheckedModeBanner, isFalse);
+
+      await disposeApp(tester);
+    });
   });
 }

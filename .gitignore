@@ -18,10 +18,9 @@ migrate_working_dir/
 *.iws
 .idea/
 
-# The .vscode folder contains launch configuration and tasks you configure in
-# VS Code which you may wish to be included in version control, so this line
-# is commented out by default.
-#.vscode/
+# VS Code. Extensions write machine-specific absolute paths into
+# settings.json, so the folder is ignored wholesale.
+.vscode/
 
 # Flutter/Dart/Pub related
 **/doc/api/
@@ -43,3 +42,10 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Local configuration and secrets. The app takes API_BASE_URL and
+# USE_MOCK_DATA via --dart-define, but keep these out if they ever appear.
+.env
+.env.*
+!.env.example
+*.pem
