@@ -3,9 +3,10 @@
 Frontend for SafeRoute, a route comparison app that considers historical crime
 exposure alongside travel time and distance.
 
-This repository contains the **Flutter mobile application only**. Route
-generation, crime analysis and all risk calculation belong to the FastAPI
-backend; the app displays what the backend returns.
+This repository contains the **Flutter app** (repo root) and the **FastAPI
+backend** (`backend/`, see `backend/README.md`). Route generation, crime
+analysis and all risk calculation belong to the backend; the app displays what
+the backend returns. The supported area is Bengaluru.
 
 ## Running
 
@@ -32,9 +33,22 @@ flutter run --dart-define=USE_MOCK_DATA=true
 | `API_BASE_URL`  | `http://10.0.2.2:8000` | Base URL of the FastAPI backend           |
 | `USE_MOCK_DATA` | `true`                 | Serve sample data instead of calling APIs |
 
-**Sample data is on by default** so the app runs before the backend exists.
-All of it lives in `lib/data/mock_data.dart` and nowhere else. Set
-`USE_MOCK_DATA=false` once the backend is available.
+**Sample data is on by default**, so the app runs without the backend. All of
+it lives in `lib/data/mock_data.dart`. To use the real backend, start it
+(`backend/README.md`) and run with `USE_MOCK_DATA=false`:
+
+| Where the app runs | `API_BASE_URL` |
+| --- | --- |
+| Android emulator | `http://10.0.2.2:8000` (default) |
+| iOS simulator | `http://localhost:8000` |
+| Physical phone | `http://<your computer's LAN IP>:8000` (same Wi-Fi) |
+
+Plain `http` is allowed in debug and profile builds only (Android debug/profile
+manifests and an iOS local-networking exception). A release build needs an
+`https` backend.
+
+If the device's GPS is outside Bengaluru, the app uses central Bengaluru
+instead, because the data and routing cover Bengaluru only.
 
 ## Project structure
 
@@ -62,7 +76,8 @@ lib/
 | `GET  /api/v1/locations/search` | `LocationSearchService.search` |
 
 `POST /api/v1/incidents` (user incident reports) is a future feature and is not
-implemented.
+implemented. `test/fixtures/*.json` are real backend responses, and
+`test/backend_contract_test.dart` checks the app's models against them.
 
 ### Expected response shapes
 
@@ -125,6 +140,3 @@ crash the app.
 Map tiles come from OpenStreetMap. Review the
 [OSM tile usage policy](https://operations.osmfoundation.org/policies/tiles)
 before any public deployment.
-
-
-dummy 

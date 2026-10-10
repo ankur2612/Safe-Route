@@ -115,7 +115,7 @@ void main() {
     final RouteProvider provider =
         RouteProvider(service: FakeRouteService(result: threeRoutes()));
     await provider.findRoutes(
-      start: const LatLng(28.6289, 77.2196),
+      start: const LatLng(12.9716, 77.5946),
       destination: testDestination,
     );
 
@@ -143,7 +143,7 @@ void main() {
     final RouteProvider provider =
         RouteProvider(service: FakeRouteService(result: threeRoutes()));
     await provider.findRoutes(
-      start: const LatLng(28.6289, 77.2196),
+      start: const LatLng(12.9716, 77.5946),
       destination: testDestination,
     );
 
@@ -160,7 +160,7 @@ void main() {
       service: FakeRouteService(error: const ApiException.timeout()),
     );
     await provider.findRoutes(
-      start: const LatLng(28.6289, 77.2196),
+      start: const LatLng(12.9716, 77.5946),
       destination: testDestination,
     );
 
@@ -180,7 +180,7 @@ void main() {
       ),
     );
     await provider.findRoutes(
-      start: const LatLng(28.6289, 77.2196),
+      start: const LatLng(12.9716, 77.5946),
       destination: testDestination,
     );
 
@@ -221,7 +221,7 @@ void main() {
   testWidgets('says when no crime data exists for the area', (tester) async {
     final CrimeDataProvider crime =
         CrimeDataProvider(service: FakeCrimeService());
-    await crime.load(const LatLng(28.6289, 77.2196));
+    await crime.load(const LatLng(12.9716, 77.5946));
 
     await pumpHome(
       tester,
@@ -239,7 +239,7 @@ void main() {
     final RouteProvider provider =
         RouteProvider(service: FakeRouteService(result: threeRoutes()));
     await provider.findRoutes(
-      start: const LatLng(28.6289, 77.2196),
+      start: const LatLng(12.9716, 77.5946),
       destination: testDestination,
     );
 

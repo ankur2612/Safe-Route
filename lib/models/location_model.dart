@@ -15,7 +15,7 @@ class LocationModel {
 
   final String name;
 
-  /// Secondary line shown under the name, e.g. "New Delhi".
+  /// Secondary line shown under the name, e.g. "Bengaluru".
   final String? address;
 
   final double latitude;

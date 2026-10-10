@@ -137,7 +137,7 @@ class FakeDeviceLocationService implements DeviceLocationService {
   Future<LatLng> getCurrentPosition() async {
     final LocationException? failure = error;
     if (failure != null) throw failure;
-    return position ?? const LatLng(28.6289, 77.2196);
+    return position ?? const LatLng(12.9716, 77.5946);
   }
 
   @override

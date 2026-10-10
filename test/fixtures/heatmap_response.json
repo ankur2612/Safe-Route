@@ -1,0 +1,40 @@
+{
+ "points": [
+  {
+   "latitude": 12.97626,
+   "longitude": 77.59293,
+   "exposure": "high",
+   "intensity": 1.0
+  },
+  {
+   "latitude": 12.97397,
+   "longitude": 77.60257,
+   "exposure": "high",
+   "intensity": 0.53
+  },
+  {
+   "latitude": 12.97935,
+   "longitude": 77.59663,
+   "exposure": "high",
+   "intensity": 0.53
+  },
+  {
+   "latitude": 12.9747,
+   "longitude": 77.59925,
+   "exposure": "high",
+   "intensity": 0.33
+  },
+  {
+   "latitude": 12.97355,
+   "longitude": 77.59675,
+   "exposure": "high",
+   "intensity": 0.33
+  },
+  {
+   "latitude": 12.9674,
+   "longitude": 77.6013,
+   "exposure": "high",
+   "intensity": 0.3
+  }
+ ]
+}

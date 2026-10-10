@@ -49,3 +49,8 @@ app.*.map.json
 .env.*
 !.env.example
 *.pem
+
+# Backend (Python)
+backend/.venv/
+__pycache__/
+.pytest_cache/

@@ -109,5 +109,28 @@ class DeviceLocationService {
   Future<void> openSettings() => Geolocator.openAppSettings();
 }
 
-/// Development fallback centre used before a GPS fix is available.
+/// Centre of the supported area (Bengaluru), used before a GPS fix is
+/// available or when the device is outside the area SafeRoute covers.
 LatLng get developmentFallbackCenter => MockData.fallbackCenter;
+
+/// Bounds of the area the backend has crime data and routing for.
+const double _minLat = 12.70;
+const double _maxLat = 13.30;
+const double _minLon = 77.35;
+const double _maxLon = 77.80;
+
+/// True when [point] is inside the supported area (Bengaluru).
+bool isInServiceArea(LatLng point) =>
+    point.latitude >= _minLat &&
+    point.latitude <= _maxLat &&
+    point.longitude >= _minLon &&
+    point.longitude <= _maxLon;
+
+/// The position to use for the map and routing: the device position when it
+/// is inside the supported area, otherwise the area's centre. This keeps the
+/// app usable (and the backend from rejecting requests) when the user is
+/// somewhere SafeRoute has no data for.
+LatLng serviceAreaCenter(LatLng? position) =>
+    position != null && isInServiceArea(position)
+        ? position
+        : developmentFallbackCenter;

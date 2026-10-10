@@ -1,0 +1,22 @@
+{
+ "results": [
+  {
+   "name": "Koramangala",
+   "address": "Bengaluru",
+   "latitude": 12.9352,
+   "longitude": 77.6245
+  },
+  {
+   "name": "Koramangala 2nd Block",
+   "address": "Bengaluru",
+   "latitude": 12.9352,
+   "longitude": 77.61
+  },
+  {
+   "name": "Koramangala 3rd Block",
+   "address": "Bengaluru",
+   "latitude": 12.9279,
+   "longitude": 77.6271
+  }
+ ]
+}

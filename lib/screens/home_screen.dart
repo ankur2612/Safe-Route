@@ -58,7 +58,11 @@ class _HomeScreenState extends State<HomeScreen> {
     await location.load();
     if (!mounted) return;
 
-    final LatLng center = location.currentPosition ?? developmentFallbackCenter;
+    final LatLng? position = location.currentPosition;
+    final LatLng center = serviceAreaCenter(position);
+    if (position != null && !isInServiceArea(position)) {
+      _showSnack('SafeRoute currently covers Bengaluru only. Showing Bengaluru.');
+    }
     _moveCamera(center, 14);
     await context.read<CrimeDataProvider>().load(center);
   }
@@ -108,9 +112,9 @@ class _HomeScreenState extends State<HomeScreen> {
     final LocationProvider location = context.read<LocationProvider>();
     final RouteProvider routes = context.read<RouteProvider>();
 
-    // Fall back to the development centre so the flow stays usable when the
-    // device has not given a position yet.
-    final LatLng start = location.currentPosition ?? developmentFallbackCenter;
+    // Fall back to the supported-area centre so the flow stays usable when
+    // the device has no position yet or is outside Bengaluru.
+    final LatLng start = serviceAreaCenter(location.currentPosition);
 
     await routes.findRoutes(start: start, destination: destination);
     if (!mounted) return;
@@ -145,7 +149,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void _clearDestination() {
     context.read<RouteProvider>().clearRoutes();
     final LatLng? position = context.read<LocationProvider>().currentPosition;
-    if (position != null) _moveCamera(position, 14);
+    _moveCamera(serviceAreaCenter(position), 14);
   }
 
   void _showIncidentDetails(CrimeIncidentModel incident) {
@@ -193,8 +197,7 @@ class _HomeScreenState extends State<HomeScreen> {
               children: <Widget>[
                 RouteMap(
                   controller: _mapController,
-                  initialCenter:
-                      location.currentPosition ?? developmentFallbackCenter,
+                  initialCenter: serviceAreaCenter(location.currentPosition),
                   currentPosition: location.currentPosition,
                   destination: routes.destination,
                   routes: routes.routes,

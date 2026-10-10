@@ -10,7 +10,7 @@ import 'package:saferoute/services/api_exception.dart';
 import 'helpers/test_app.dart';
 
 void main() {
-  const LatLng start = LatLng(28.6289, 77.2196);
+  const LatLng start = LatLng(12.9716, 77.5946);
 
   RouteResultModel threeRoutes() {
     return RouteResultModel(
