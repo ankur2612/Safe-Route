@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/risk_model.dart';
 import '../models/route_model.dart';
 import '../utils/app_theme.dart';
+import 'google_maps_action.dart';
 import 'risk_badge.dart';
 
 /// One route option in the comparison list.
@@ -18,6 +19,7 @@ class RouteCard extends StatelessWidget {
     required this.onTap,
     this.isRecommended = false,
     this.isFastest = false,
+    this.onOpenInGoogleMaps,
   });
 
   final RouteModel route;
@@ -29,6 +31,9 @@ class RouteCard extends StatelessWidget {
   final VoidCallback onTap;
   final bool isRecommended;
   final bool isFastest;
+
+  /// Hands this route to Google Maps. The action is hidden when null.
+  final VoidCallback? onOpenInGoogleMaps;
 
   @override
   Widget build(BuildContext context) {
@@ -106,6 +111,13 @@ class RouteCard extends StatelessWidget {
                         color: AppColors.textSecondary,
                       ),
                   ],
+                ),
+              ],
+              if (onOpenInGoogleMaps != null) ...<Widget>[
+                const SizedBox(height: 12),
+                GoogleMapsButton(
+                  routeName: route.name,
+                  onPressed: onOpenInGoogleMaps!,
                 ),
               ],
             ],

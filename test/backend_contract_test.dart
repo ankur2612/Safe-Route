@@ -91,10 +91,12 @@ void main() {
       client: clientReturning(fixture('locations_response.json'), onRequest: (r) => seen = r),
       useMockData: false,
     );
-    final List<LocationModel> places = await service.search('koramangala');
+    final List<LocationModel> places = (await service.search('koramangala')).places;
     expect(seen!.url.queryParameters['q'], 'koramangala');
     expect(places, isNotEmpty);
     expect(places.first.name, isNotEmpty);
+    expect(places.first.placeId, isNotNull);
+    expect(places.first.crimeDataAvailable, isTrue);
   });
 
   test('risk response parses', () async {

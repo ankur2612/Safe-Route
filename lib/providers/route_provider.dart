@@ -39,6 +39,11 @@ class RouteProvider extends ChangeNotifier {
   RecommendationModel? _recommendation;
   RecommendationModel? get recommendation => _recommendation;
 
+  String? _coverageMessage;
+
+  /// Why the current routes have no crime-risk estimate, if they have none.
+  String? get coverageMessage => _coverageMessage;
+
   RoutePreference _preference = RoutePreference.balanced;
   RoutePreference get preference => _preference;
 
@@ -118,6 +123,7 @@ class RouteProvider extends ChangeNotifier {
 
       _routes = result.routes;
       _recommendation = result.recommendation;
+      _coverageMessage = result.coverageMessage;
       // Reset the selection so the new recommendation is shown first.
       _selectedRouteId = result.recommendedRoute?.id ??
           (result.routes.isEmpty ? null : result.routes.first.id);
@@ -127,12 +133,14 @@ class RouteProvider extends ChangeNotifier {
       _errorMessage = error.message;
       _routes = const <RouteModel>[];
       _recommendation = null;
+      _coverageMessage = null;
       _selectedRouteId = null;
     } catch (_) {
       _status = RouteStatus.error;
       _errorMessage = 'Could not generate routes right now.';
       _routes = const <RouteModel>[];
       _recommendation = null;
+      _coverageMessage = null;
       _selectedRouteId = null;
     }
 
@@ -151,6 +159,7 @@ class RouteProvider extends ChangeNotifier {
   void clearRoutes() {
     _routes = const <RouteModel>[];
     _recommendation = null;
+    _coverageMessage = null;
     _selectedRouteId = null;
     _destination = null;
     _status = RouteStatus.idle;

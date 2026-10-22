@@ -30,10 +30,15 @@ class RouteResultModel {
   const RouteResultModel({
     required this.routes,
     this.recommendation,
+    this.coverageMessage,
   });
 
   final List<RouteModel> routes;
   final RecommendationModel? recommendation;
+
+  /// Set when the trip is outside the crime-data area: the routes then come
+  /// without a risk estimate and this explains why.
+  final String? coverageMessage;
 
   bool get isEmpty => routes.isEmpty;
 
@@ -62,6 +67,7 @@ class RouteResultModel {
       routes: routes,
       recommendation:
           rawRec == null ? null : RecommendationModel.fromJson(rawRec),
+      coverageMessage: asText(json['coverage_message']),
     );
   }
 }

@@ -39,6 +39,34 @@ class CrimeService {
       },
     );
 
+    return _parseCrimes(json);
+  }
+
+  /// `POST /api/v1/crimes/route` - historical incidents within the corridor
+  /// the backend uses for the route's risk score.
+  ///
+  /// The sample data has no records along routes, so it returns none rather
+  /// than inventing them.
+  Future<List<CrimeIncidentModel>> fetchRouteCrimes({
+    required List<LatLng> points,
+    int limit = 150,
+  }) async {
+    if (useMockData || points.length < 2) return const <CrimeIncidentModel>[];
+
+    final Map<String, dynamic> json = await _client.post(
+      '/crimes/route',
+      body: <String, dynamic>{
+        'geometry': <List<double>>[
+          for (final LatLng point in points)
+            <double>[point.latitude, point.longitude],
+        ],
+        'limit': limit,
+      },
+    );
+    return _parseCrimes(json);
+  }
+
+  List<CrimeIncidentModel> _parseCrimes(Map<String, dynamic> json) {
     final List<Map<String, dynamic>> raw = asMapList(json['crimes'] ?? json['items']);
     final List<CrimeIncidentModel> crimes = <CrimeIncidentModel>[];
     for (int i = 0; i < raw.length; i++) {

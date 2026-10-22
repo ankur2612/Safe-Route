@@ -7,7 +7,9 @@ The formula is deliberately simple and documented in the README:
 * a route's exposure is the total weight of incidents within 300 m of the
   route, per km of route;
 * the score is that exposure divided by a "high" reference taken from the
-  dataset itself (90th percentile over the city), capped at 1.
+  dataset itself (90th percentile over the city), capped at 1;
+* a route with no records anywhere near it is "unknown", not "low": an
+  absence of data is not evidence of low exposure.
 
 The output describes *estimated historical exposure*. It is not a prediction
 and says nothing about safety.
@@ -22,6 +24,10 @@ NEAR_ROUTE_M = 300.0
 HALF_LIFE_YEARS = 3.0
 LOW_BELOW = 0.33
 MODERATE_BELOW = 0.66
+# A route point counts as covered by the dataset when any record lies this
+# close (the same "populated" test the calibration uses).
+COVERAGE_RADIUS_M = 1500.0
+PARTIAL_COVERAGE_BELOW = 0.5
 
 SEVERITY = {
     "Murder": 5, "Sexual Assault": 5, "Acid Attack": 5, "Kidnapping": 5,
@@ -36,7 +42,10 @@ REASONS = {
     "low": "Lower estimated historical crime exposure along this route.",
     "moderate": "Moderate estimated historical crime exposure along parts of this route.",
     "high": "Higher estimated historical crime exposure along this route.",
+    "unknown": "No historical crime records are available near this route, so its "
+    "exposure cannot be estimated.",
 }
+PARTIAL_NOTE = " Historical crime data covers only part of this route, so this estimate may be incomplete."
 
 
 @dataclass(frozen=True)
@@ -92,21 +101,26 @@ class RiskEngine:
 
     def _exposure(self, points: list[tuple[float, float]]) -> float:
         """Total weight of distinct incidents within range of the path."""
-        seen: set[str] = set()
-        total = 0.0
-        for lat, lon in densify(points):
-            for _, inc in self.store.near(lat, lon, NEAR_ROUTE_M):
-                if inc.id not in seen:
-                    seen.add(inc.id)
-                    total += self._weights[inc.id]
-        return total
+        return sum(self._weights[inc.id] for inc in self.store.near_path(points, NEAR_ROUTE_M))
+
+    def coverage(self, points: list[tuple[float, float]]) -> float:
+        """Share of the path (0-1) that has any historical record nearby."""
+        dense = densify(points)
+        if not dense:
+            return 0.0
+        covered = sum(1 for lat, lon in dense if self.store.near(lat, lon, COVERAGE_RADIUS_M))
+        return covered / len(dense)
 
     def score_path(self, points: list[tuple[float, float]]) -> RiskResult:
+        coverage = self.coverage(points)
+        if coverage == 0:
+            return RiskResult(level="unknown", score=0.0, reason=REASONS["unknown"])
         km = max(path_length_km(points), 0.3)
         density = self._exposure(points) / km
         score = round(min(1.0, density / self.high_reference), 2)
         level = level_for(score)
-        return RiskResult(level=level, score=score, reason=REASONS[level])
+        reason = REASONS[level] + (PARTIAL_NOTE if coverage < PARTIAL_COVERAGE_BELOW else "")
+        return RiskResult(level=level, score=score, reason=reason)
 
     def segment_scores(
         self, points: list[tuple[float, float]], max_segments: int = 8

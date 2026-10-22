@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:saferoute/models/crime_incident_model.dart';
@@ -108,15 +110,35 @@ class FakeLocationSearchService implements LocationSearchService {
 
   final List<String> queries = <String>[];
 
+  /// When true, each search waits until the test completes
+  /// `pending[query]`, so tests can control when and in what order replies
+  /// arrive.
+  bool holdReplies = false;
+  final Map<String, Completer<List<LocationModel>>> pending =
+      <String, Completer<List<LocationModel>>>{};
+
+  /// Marks answers as coming from the backend's degraded fallback.
+  bool degraded = false;
+
+  /// The `near` position passed with each search.
+  final List<LatLng?> nearPositions = <LatLng?>[];
+
+  /// Stands in for the real backend-backed service, not sample data.
   @override
-  bool get useMockData => true;
+  bool get useMockData => false;
 
   @override
-  Future<List<LocationModel>> search(String query) async {
+  Future<LocationSearchResult> search(String query, {LatLng? near}) async {
     queries.add(query);
+    nearPositions.add(near);
+    if (holdReplies) {
+      final List<LocationModel> places =
+          await (pending[query] = Completer<List<LocationModel>>()).future;
+      return LocationSearchResult(places, degraded: degraded);
+    }
     final Object? failure = error;
     if (failure != null) throw failure;
-    return results;
+    return LocationSearchResult(results, degraded: degraded);
   }
 
   @override
@@ -150,11 +172,28 @@ class FakeCrimeService implements CrimeService {
     this.incidents = const <CrimeIncidentModel>[],
     this.heatmap = const <HeatmapPointModel>[],
     this.error,
+    this.routeIncidents = const <CrimeIncidentModel>[],
+    this.routeError,
+    this.incidentsByCenter,
   });
 
   List<CrimeIncidentModel> incidents;
   List<HeatmapPointModel> heatmap;
   Object? error;
+
+  /// Returned by [fetchRouteCrimes] for every route.
+  List<CrimeIncidentModel> routeIncidents;
+  Object? routeError;
+
+  /// When set, [fetchCrimes] answers per centre instead of with [incidents].
+  Map<LatLng, List<CrimeIncidentModel>>? incidentsByCenter;
+
+  /// When set, every request waits for it, so tests can control ordering.
+  Completer<void>? gate;
+
+  /// Centres passed to [fetchCrimes], in call order.
+  final List<LatLng> crimeCenters = <LatLng>[];
+  int routeCallCount = 0;
 
   @override
   bool get useMockData => true;
@@ -165,9 +204,11 @@ class FakeCrimeService implements CrimeService {
     double radiusKm = 3,
     int limit = 200,
   }) async {
+    crimeCenters.add(center);
+    await gate?.future;
     final Object? failure = error;
     if (failure != null) throw failure;
-    return incidents;
+    return incidentsByCenter?[center] ?? incidents;
   }
 
   @override
@@ -175,9 +216,22 @@ class FakeCrimeService implements CrimeService {
     required LatLng center,
     double radiusKm = 4,
   }) async {
+    await gate?.future;
     final Object? failure = error;
     if (failure != null) throw failure;
     return heatmap;
+  }
+
+  @override
+  Future<List<CrimeIncidentModel>> fetchRouteCrimes({
+    required List<LatLng> points,
+    int limit = 150,
+  }) async {
+    routeCallCount++;
+    await gate?.future;
+    final Object? failure = routeError;
+    if (failure != null) throw failure;
+    return routeIncidents;
   }
 
   @override

@@ -3,7 +3,14 @@ from fastapi import APIRouter, HTTPException, Query
 from ...config import BBOX
 from ...deps import get_engine, get_store
 from ...geo import in_bbox
-from ...schemas import CrimeOut, CrimesResponse, HeatmapPointOut, HeatmapResponse
+from ...schemas import (
+    CrimeOut,
+    CrimesResponse,
+    HeatmapPointOut,
+    HeatmapResponse,
+    RouteCrimesRequest,
+)
+from ...services.risk import NEAR_ROUTE_M
 
 router = APIRouter()
 
@@ -17,6 +24,18 @@ def _check_area(lat: float, lon: float) -> None:
         raise HTTPException(422, "Crime data is only available for Bengaluru.")
 
 
+def _crime_out(inc) -> CrimeOut:
+    return CrimeOut(
+        id=inc.id,
+        type=inc.type,
+        latitude=inc.latitude,
+        longitude=inc.longitude,
+        date=inc.date.isoformat(),
+        area=inc.area or inc.district,
+        description=inc.description,
+    )
+
+
 @router.get("/crimes", response_model=CrimesResponse)
 def crimes(
     latitude: float = Query(ge=-90, le=90),
@@ -26,20 +45,28 @@ def crimes(
 ) -> CrimesResponse:
     _check_area(latitude, longitude)
     nearby = sorted(get_store().near(latitude, longitude, radius_km * 1000), key=lambda t: t[0])
-    return CrimesResponse(
-        crimes=[
-            CrimeOut(
-                id=inc.id,
-                type=inc.type,
-                latitude=inc.latitude,
-                longitude=inc.longitude,
-                date=inc.date.isoformat(),
-                area=inc.area or inc.district,
-                description=inc.description,
-            )
-            for _, inc in nearby[:limit]
-        ]
-    )
+    return CrimesResponse(crimes=[_crime_out(inc) for _, inc in nearby[:limit]])
+
+
+@router.post("/crimes/route", response_model=CrimesResponse)
+def route_crimes(body: RouteCrimesRequest) -> CrimesResponse:
+    """Incidents within the same corridor the risk score counts (300 m)."""
+    points: list[tuple[float, float]] = []
+    for pair in body.geometry:
+        if len(pair) < 2:
+            raise HTTPException(422, "Each geometry point needs [latitude, longitude].")
+        points.append((pair[0], pair[1]))
+    # A route may leave Bengaluru (records only exist inside it), but one
+    # entirely outside has nothing to show.
+    if not any(in_bbox(lat, lon, BBOX) for lat, lon in points):
+        raise HTTPException(422, "Crime data is only available for Bengaluru.")
+
+    found = get_store().near_path(points, NEAR_ROUTE_M)
+    if len(found) > body.limit:
+        # Spread the sample along the whole route instead of only its start.
+        step = len(found) / body.limit
+        found = [found[int(i * step)] for i in range(body.limit)]
+    return CrimesResponse(crimes=[_crime_out(inc) for inc in found])
 
 
 @router.get("/crimes/heatmap", response_model=HeatmapResponse)

@@ -19,4 +19,5 @@ def risk_route(body: RiskRouteRequest) -> RiskRouteResponse:
         raise HTTPException(422, "Route is outside the supported area (Bengaluru).")
 
     result = get_engine().score_path(points)
-    return RiskRouteResponse(risk=RiskOut(risk=result.level, score=result.score, reason=result.reason))
+    score = None if result.level == "unknown" else result.score
+    return RiskRouteResponse(risk=RiskOut(risk=result.level, score=score, reason=result.reason))

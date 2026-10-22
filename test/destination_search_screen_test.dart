@@ -122,7 +122,7 @@ void main() {
     await tester.pump(pastDebounce);
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('No internet connection'), findsOneWidget);
+    expect(find.textContaining("Couldn't connect to the SafeRoute server"), findsOneWidget);
     expect(find.text('Try Again'), findsOneWidget);
 
     // Recovering should replace the error with results.

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../utils/app_config.dart';
@@ -13,16 +14,25 @@ import 'api_exception.dart';
 /// It owns the base URL and turns transport and status errors into
 /// [ApiException] so no widget has to deal with HTTP details.
 class ApiClient {
-  ApiClient({http.Client? client}) : _client = client ?? http.Client();
+  ApiClient({
+    http.Client? client,
+    String? baseUrl,
+    bool releaseBuild = kReleaseMode,
+  })  : _client = client ?? http.Client(),
+        _baseUrl = baseUrl ?? AppConfig.apiBaseUrl,
+        _releaseBuild = releaseBuild;
 
   final http.Client _client;
+  final String _baseUrl;
+  final bool _releaseBuild;
 
   Future<Map<String, dynamic>> get(
     String path, {
     Map<String, String>? query,
+    Duration timeout = AppConfig.requestTimeout,
   }) async {
     final Uri uri = _buildUri(path, query);
-    return _send(() => _client.get(uri, headers: _headers));
+    return _send(uri, timeout, () => _client.get(uri, headers: _headers));
   }
 
   Future<Map<String, dynamic>> post(
@@ -31,6 +41,8 @@ class ApiClient {
   }) async {
     final Uri uri = _buildUri(path, null);
     return _send(
+      uri,
+      AppConfig.requestTimeout,
       () => _client.post(
         uri,
         headers: _headers,
@@ -47,7 +59,7 @@ class ApiClient {
   };
 
   Uri _buildUri(String path, Map<String, String>? query) {
-    final Uri base = Uri.parse('${AppConfig.apiBaseUrl}${AppConfig.apiPrefix}$path');
+    final Uri base = Uri.parse('$_baseUrl${AppConfig.apiPrefix}$path');
     if (query == null || query.isEmpty) return base;
     return base.replace(queryParameters: <String, String>{
       ...base.queryParameters,
@@ -56,17 +68,37 @@ class ApiClient {
   }
 
   Future<Map<String, dynamic>> _send(
+    Uri uri,
+    Duration timeout,
     Future<http.Response> Function() request,
   ) async {
+    // Fail at once, with the real reason, instead of waiting for an address
+    // the phone can never reach.
+    final String? problem =
+        AppConfig.apiBaseUrlProblem(_baseUrl, releaseBuild: _releaseBuild);
+    if (problem != null) {
+      throw ApiException(ApiFailureKind.configuration, problem);
+    }
+
     late final http.Response response;
     try {
-      response = await request().timeout(AppConfig.requestTimeout);
+      response = await request().timeout(timeout);
     } on TimeoutException {
-      throw const ApiException.timeout();
-    } on SocketException {
-      throw const ApiException.network();
-    } on http.ClientException {
-      throw const ApiException.network();
+      throw ApiException(
+        ApiFailureKind.timeout,
+        'The SafeRoute server (${_server(uri)}) did not respond in time. '
+        'Please try again.',
+      );
+    } on Exception catch (error) {
+      throw _connectionError(error, uri);
+    } on StateError catch (error) {
+      // dart:io refuses plain http when the platform forbids it.
+      if (!error.message.contains('Insecure HTTP')) rethrow;
+      throw ApiException(
+        ApiFailureKind.configuration,
+        'This build only allows secure (https) server addresses, but it points '
+        'at ${_server(uri)}. Rebuild it with an https API_BASE_URL.',
+      );
     }
 
     if (response.statusCode == 404) {
@@ -76,10 +108,21 @@ class ApiClient {
       );
     }
 
+    if (response.statusCode == 429) {
+      throw ApiException(
+        ApiFailureKind.rateLimited,
+        _errorMessage(response.body) ??
+            'Too many requests right now. Please wait a moment and try again.',
+      );
+    }
+
     if (response.statusCode >= 500) {
-      throw const ApiException(
+      // The backend explains its own failures (e.g. "Location search is
+      // temporarily unavailable"); anything else gets a generic message.
+      throw ApiException(
         ApiFailureKind.server,
-        'The server is not responding correctly. Please try again shortly.',
+        _errorMessage(response.body) ??
+            'The server is not responding correctly. Please try again shortly.',
       );
     }
 
@@ -106,6 +149,44 @@ class ApiClient {
       throw const ApiException.badResponse();
     }
   }
+
+  /// Names what actually failed. package:http reports socket errors as a
+  /// [http.ClientException] that is also a [SocketException]; the text tells
+  /// a failed name lookup apart from a refused or unreachable server.
+  ApiException _connectionError(Exception error, Uri uri) {
+    final String server = _server(uri);
+    if (error is TlsException) {
+      return ApiException(
+        ApiFailureKind.secureConnection,
+        "Couldn't make a secure connection to the SafeRoute server ($server).",
+      );
+    }
+    if (error is! SocketException && error is! http.ClientException) {
+      return ApiException(
+        ApiFailureKind.network,
+        "Couldn't connect to the SafeRoute server ($server).",
+      );
+    }
+    if (error.toString().contains('Failed host lookup')) {
+      return ApiException(
+        ApiFailureKind.hostLookup,
+        "Couldn't find the SafeRoute server ($server). Check your internet "
+        'connection and that the server address is correct.',
+      );
+    }
+    final String hint = AppConfig.developmentOnlyHosts.contains(uri.host)
+        ? ' That address only works from the development computer or its '
+            'emulator; on a phone, use a deployed server or the computer\'s '
+            'network IP.'
+        : ' The server may be offline, or the address may be wrong.';
+    return ApiException(
+      ApiFailureKind.network,
+      "Couldn't connect to the SafeRoute server ($server).$hint",
+    );
+  }
+
+  static String _server(Uri uri) =>
+      uri.hasPort ? '${uri.host}:${uri.port}' : uri.host;
 
   /// Pulls FastAPI's `detail` field out of an error body when present.
   String? _errorMessage(String body) {

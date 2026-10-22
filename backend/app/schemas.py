@@ -14,8 +14,10 @@ class RouteRequest(BaseModel):
 
 
 class RiskOut(BaseModel):
+    # "low" | "moderate" | "high", or "unknown" when there is no data to
+    # estimate from (then ``score`` is null).
     risk: str
-    score: float
+    score: float | None
     reason: str
 
 
@@ -43,6 +45,10 @@ class RecommendationOut(BaseModel):
 class RoutesResponse(BaseModel):
     routes: list[RouteOut]
     recommendation: RecommendationOut
+    # "full" when both ends are inside the crime-data area (Bengaluru),
+    # "none" otherwise: routes are then returned without a risk estimate.
+    risk_coverage: str = "full"
+    coverage_message: str | None = None
 
 
 class RiskRouteRequest(BaseModel):
@@ -68,6 +74,11 @@ class CrimesResponse(BaseModel):
     crimes: list[CrimeOut]
 
 
+class RouteCrimesRequest(BaseModel):
+    geometry: list[list[float]] = Field(min_length=2, max_length=20000)
+    limit: int = Field(default=150, ge=1, le=500)
+
+
 class HeatmapPointOut(BaseModel):
     latitude: float
     longitude: float
@@ -84,7 +95,19 @@ class LocationOut(BaseModel):
     address: str
     latitude: float
     longitude: float
+    # Neighbourhood or district the place is in, when the geocoder knows it.
+    locality: str | None = None
+    # Kind of place ("suburb", "station", "primary" road ...), when known.
+    category: str | None = None
+    # Provider identifier, e.g. "osm:N123".
+    place_id: str | None = None
+    # Whether SafeRoute has crime data here (Bengaluru only). Any place can be
+    # chosen; outside this area routes come without a risk estimate.
+    crime_data_available: bool
 
 
 class LocationsResponse(BaseModel):
     results: list[LocationOut]
+    # True when the geocoding provider failed and only a short built-in list
+    # of Bengaluru places answered.
+    degraded: bool = False

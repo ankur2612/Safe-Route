@@ -40,13 +40,18 @@ def test_invalid_params_give_string_detail(client):
 
 
 def test_search_local_results(client, monkeypatch):
-    async def down(_):
+    async def down(*_):
         raise geocoding.httpx.ConnectError("offline")
 
-    monkeypatch.setattr(geocoding, "_nominatim", down)
+    monkeypatch.setattr(geocoding, "_photon", down)
     geocoding._cache.clear()
-    results = client.get("/api/v1/locations/search", params={"q": "koramangala"}).json()["results"]
-    assert results and set(results[0]) == {"name", "address", "latitude", "longitude"}
+    body = client.get("/api/v1/locations/search", params={"q": "koramangala"}).json()
+    results = body["results"]
+    assert results and set(results[0]) == {
+        "name", "address", "latitude", "longitude", "locality", "category", "place_id",
+        "crime_data_available",
+    }
+    assert body["degraded"] is True  # the fallback is labelled, not passed off as full results
     assert not geocoding._cache  # degraded answers are not cached
 
 
@@ -79,7 +84,8 @@ def test_routes_contract_and_recommendation(client, monkeypatch):
         r = client.post("/api/v1/routes", json={**BODY, "preference": pref})
         assert r.status_code == 200
         j = r.json()
-        assert set(j) == {"routes", "recommendation"}
+        assert set(j) == {"routes", "recommendation", "risk_coverage", "coverage_message"}
+        assert j["risk_coverage"] == "full" and j["coverage_message"] is None
         route = j["routes"][0]
         assert {"id", "name", "duration_minutes", "distance_km", "geometry", "risk", "segments"} <= set(route)
         assert set(route["risk"]) == {"risk", "score", "reason"}
@@ -94,13 +100,27 @@ def test_routes_contract_and_recommendation(client, monkeypatch):
 def test_risk_ordering_dense_vs_empty_area(client):
     dense = client.post("/api/v1/risk/route", json={"geometry": [[12.9763, 77.5929], [12.9800, 77.5990]]}).json()
     empty = client.post("/api/v1/risk/route", json={"geometry": [[13.28, 77.37], [13.29, 77.38]]}).json()
-    assert dense["risk"]["score"] > empty["risk"]["score"]
-    assert empty["risk"]["risk"] == "low"
+    assert dense["risk"]["score"] > 0
+    # No records near the route means no data, not low exposure: no score.
+    assert empty["risk"]["risk"] == "unknown"
+    assert empty["risk"]["score"] is None
 
 
-def test_routes_outside_area_and_same_point(client):
+def test_routes_outside_area_and_same_point(client, monkeypatch):
+    # Outside Bengaluru: routes are returned, but never with a risk estimate.
+    _fake_routes(
+        monkeypatch,
+        [RawRoute(9000, 200000, _line((28.6, 77.2), (28.9, 77.6))), RawRoute(9600, 210000, _line((28.6, 77.2), (28.8, 77.7)))],
+    )
     far = {**BODY, "start": {"latitude": 28.6, "longitude": 77.2}}
-    assert client.post("/api/v1/routes", json=far).status_code == 422
+    for pref in ("fastest", "balanced", "lower_risk"):
+        j = client.post("/api/v1/routes", json={**far, "preference": pref}).json()
+        assert j["risk_coverage"] == "none" and "Bengaluru" in j["coverage_message"]
+        for route in j["routes"]:
+            assert route["risk"]["risk"] == "unknown" and route["risk"]["score"] is None
+            assert route["segments"] == []
+        assert j["recommendation"]["route_id"] == "route-a"  # quickest, not "lowest risk"
+        assert "No crime-risk estimate" in j["recommendation"]["reason"]
     same = {**BODY, "destination": BODY["start"]}
     assert client.post("/api/v1/routes", json=same).status_code == 422
 

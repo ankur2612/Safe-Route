@@ -85,7 +85,7 @@ void main() {
     await provider.findRoutes(start: start, destination: testDestination);
 
     expect(provider.status, RouteStatus.error);
-    expect(provider.errorMessage, contains('No internet connection'));
+    expect(provider.errorMessage, contains("Couldn't connect to the SafeRoute server"));
     expect(provider.routes, isEmpty);
   });
 

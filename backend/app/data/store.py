@@ -6,7 +6,7 @@ from datetime import date
 from pathlib import Path
 
 from ..config import CRIMES_CSV
-from ..geo import haversine_m
+from ..geo import densify, haversine_m
 
 # ~330 m cells; small enough that a radius query touches few buckets.
 CELL_DEG = 0.003
@@ -73,6 +73,17 @@ class CrimeStore:
                     d = haversine_m(lat, lon, inc.latitude, inc.longitude)
                     if d <= radius_m:
                         found.append((d, inc))
+        return found
+
+    def near_path(self, points: list[tuple[float, float]], radius_m: float) -> list[Incident]:
+        """Distinct incidents within ``radius_m`` of a path, in the order the path reaches them."""
+        seen: set[str] = set()
+        found = []
+        for lat, lon in densify(points):
+            for _, inc in sorted(self.near(lat, lon, radius_m), key=lambda t: t[0]):
+                if inc.id not in seen:
+                    seen.add(inc.id)
+                    found.append(inc)
         return found
 
 

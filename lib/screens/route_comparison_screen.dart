@@ -5,7 +5,9 @@ import '../models/risk_model.dart';
 import '../models/route_model.dart';
 import '../navigation/app_routes.dart';
 import '../providers/route_provider.dart';
+import '../services/google_maps_launcher.dart';
 import '../utils/app_theme.dart';
+import '../widgets/google_maps_action.dart';
 import '../widgets/risk_badge.dart';
 import '../widgets/route_map.dart';
 import '../widgets/route_preference_selector.dart';
@@ -16,7 +18,13 @@ import '../widgets/state_views.dart';
 /// Uses a vertical card list rather than a wide table so it stays readable on
 /// a phone.
 class RouteComparisonScreen extends StatelessWidget {
-  const RouteComparisonScreen({super.key});
+  const RouteComparisonScreen({
+    super.key,
+    this.mapsLauncher = const GoogleMapsLauncher(),
+  });
+
+  /// Injectable for tests; opens routes in Google Maps.
+  final GoogleMapsLauncher mapsLauncher;
 
   @override
   Widget build(BuildContext context) {
@@ -25,7 +33,7 @@ class RouteComparisonScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('Compare routes')),
       body: routes.hasRoutes
-          ? _ComparisonList(routes: routes)
+          ? _ComparisonList(routes: routes, mapsLauncher: mapsLauncher)
           : const Padding(
               padding: EdgeInsets.all(16),
               child: EmptyMessage(
@@ -39,9 +47,10 @@ class RouteComparisonScreen extends StatelessWidget {
 }
 
 class _ComparisonList extends StatelessWidget {
-  const _ComparisonList({required this.routes});
+  const _ComparisonList({required this.routes, required this.mapsLauncher});
 
   final RouteProvider routes;
+  final GoogleMapsLauncher mapsLauncher;
 
   @override
   Widget build(BuildContext context) {
@@ -75,6 +84,13 @@ class _ComparisonList extends StatelessWidget {
                   Navigator.of(context)
                       .popUntil(ModalRoute.withName(AppRoutes.home));
                 },
+                onOpenInGoogleMaps: () => openRouteInGoogleMaps(
+                  context,
+                  launcher: mapsLauncher,
+                  origin: routes.start,
+                  destination: routes.destination?.latLng,
+                  route: routes.routes[i],
+                ),
               ),
             ),
         const SizedBox(height: 4),
@@ -82,6 +98,11 @@ class _ComparisonList extends StatelessWidget {
           'Estimated risk is based on available historical crime data. '
           'Historical data cannot guarantee future safety, and missing or '
           'incomplete records can affect the result.',
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(height: 1.4),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          googleMapsLimitationNote,
           style: Theme.of(context).textTheme.bodySmall?.copyWith(height: 1.4),
         ),
       ],
@@ -96,6 +117,7 @@ class _ComparisonCard extends StatelessWidget {
     required this.isRecommended,
     required this.isFastest,
     required this.onSelect,
+    required this.onOpenInGoogleMaps,
   });
 
   final RouteModel route;
@@ -103,6 +125,7 @@ class _ComparisonCard extends StatelessWidget {
   final bool isRecommended;
   final bool isFastest;
   final VoidCallback onSelect;
+  final VoidCallback onOpenInGoogleMaps;
 
   @override
   Widget build(BuildContext context) {
@@ -199,6 +222,11 @@ class _ComparisonCard extends StatelessWidget {
               onPressed: onSelect,
               child: const Text('Show on map'),
             ),
+          ),
+          const SizedBox(height: 8),
+          GoogleMapsButton(
+            routeName: route.name,
+            onPressed: onOpenInGoogleMaps,
           ),
         ],
       ),

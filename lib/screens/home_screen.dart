@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
@@ -11,10 +13,12 @@ import '../navigation/app_routes.dart';
 import '../providers/crime_data_provider.dart';
 import '../providers/location_provider.dart';
 import '../providers/route_provider.dart';
+import '../services/google_maps_launcher.dart';
 import '../services/location_service.dart';
 import '../utils/app_theme.dart';
 import '../widgets/crime_info_card.dart';
 import '../widgets/destination_search_bar.dart';
+import '../widgets/google_maps_action.dart';
 import '../widgets/map_controls.dart';
 import '../widgets/map_legend.dart';
 import '../widgets/recommendation_card.dart';
@@ -27,7 +31,13 @@ import 'destination_search_screen.dart';
 /// The main screen: an interactive map with a panel underneath that shows
 /// whichever step of the flow the user is on.
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  const HomeScreen({
+    super.key,
+    this.mapsLauncher = const GoogleMapsLauncher(),
+  });
+
+  /// Injectable for tests; opens routes in Google Maps.
+  final GoogleMapsLauncher mapsLauncher;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -38,6 +48,14 @@ class _HomeScreenState extends State<HomeScreen> {
 
   /// Set once the map is built, so camera moves are not attempted early.
   bool _mapReady = false;
+
+  /// Size of the map area, used to keep camera padding inside the map.
+  Size? _mapSize;
+
+  /// The trip the crime layers were last requested for, so they are only
+  /// re-requested when the origin, destination or routes actually change.
+  String? _crimeTripKey;
+  List<RouteModel>? _crimeTripRoutes;
 
   @override
   void initState() {
@@ -51,7 +69,8 @@ class _HomeScreenState extends State<HomeScreen> {
     super.dispose();
   }
 
-  /// Gets a position, then loads the crime layers for that area.
+  /// Gets a position and moves the map there. The crime layers follow from
+  /// [_syncCrimeData] once the position is known.
   Future<void> _initialise() async {
     if (!mounted) return;
     final LocationProvider location = context.read<LocationProvider>();
@@ -59,12 +78,13 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!mounted) return;
 
     final LatLng? position = location.currentPosition;
-    final LatLng center = serviceAreaCenter(position);
     if (position != null && !isInServiceArea(position)) {
-      _showSnack('SafeRoute currently covers Bengaluru only. Showing Bengaluru.');
+      _showSnack(
+        'Crime-risk estimates cover Bengaluru only. You can still search and '
+        'get routes elsewhere in India.',
+      );
     }
-    _moveCamera(center, 14);
-    await context.read<CrimeDataProvider>().load(center);
+    _moveCamera(position ?? developmentFallbackCenter, 14);
   }
 
   Future<void> _recentre() async {
@@ -86,21 +106,94 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   /// Frames the whole route so the user sees it end to end.
-  void _fitRoute(RouteModel route) {
-    if (!_mapReady || route.points.isEmpty) return;
+  void _fitRoute(RouteModel route) => _fitCoordinates(route.points);
+
+  /// Frames both endpoints and every candidate route, rather than centring
+  /// on the destination alone.
+  void _fitTrip() {
+    final RouteProvider routes = context.read<RouteProvider>();
+    _fitCoordinates(<LatLng>[
+      if (routes.start != null) routes.start!,
+      if (routes.destination != null) routes.destination!.latLng,
+      for (final RouteModel route in routes.routes) ...route.points,
+    ]);
+  }
+
+  void _fitCoordinates(List<LatLng> coordinates) {
+    if (!_mapReady || coordinates.isEmpty) return;
     _mapController.fitCamera(
       CameraFit.coordinates(
-        coordinates: route.points,
-        padding: const EdgeInsets.fromLTRB(48, 130, 48, 300),
+        coordinates: coordinates,
+        padding: _fitPadding(),
         maxZoom: 16,
       ),
+    );
+  }
+
+  /// Room for the search bar (top) and map buttons (right), capped to a share
+  /// of the map. Fixed padding taller than a short map left nothing to fit
+  /// into, which zoomed the camera onto the destination.
+  EdgeInsets _fitPadding() {
+    final Size size = _mapSize ?? const Size(360, 360);
+    double vertical(double value) => math.min(value, size.height / 4);
+    double horizontal(double value) => math.min(value, size.width / 5);
+    return EdgeInsets.fromLTRB(
+      horizontal(28),
+      vertical(84),
+      horizontal(76),
+      vertical(28),
+    );
+  }
+
+  /// Keeps the crime layers in step with the trip: the origin, the
+  /// destination once chosen, and the routes once generated. While routes are
+  /// loading the current layers are left alone, so markers do not disappear
+  /// when the preference changes.
+  void _syncCrimeData(LocationProvider location, RouteProvider routes) {
+    if (location.status == LocationStatus.idle || location.isLoading) return;
+    if (routes.isLoading) return;
+
+    final LatLng? destination = routes.destination?.latLng;
+    // A trip keeps the start its routes were generated from.
+    final LatLng origin = (destination != null ? routes.start : null) ??
+        location.currentPosition ??
+        developmentFallbackCenter;
+    final List<RouteModel> tripRoutes = routes.status == RouteStatus.success
+        ? routes.routes
+        : const <RouteModel>[];
+
+    final String key = '$origin|$destination';
+    if (key == _crimeTripKey && identical(tripRoutes, _crimeTripRoutes)) return;
+    _crimeTripKey = key;
+    _crimeTripRoutes = tripRoutes;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      context.read<CrimeDataProvider>().loadTrip(
+            origin: origin,
+            destination: destination,
+            routes: tripRoutes,
+          );
+    });
+  }
+
+  Future<void> _openInGoogleMaps(RouteModel route) {
+    final RouteProvider routes = context.read<RouteProvider>();
+    return openRouteInGoogleMaps(
+      context,
+      launcher: widget.mapsLauncher,
+      origin: routes.start,
+      destination: routes.destination?.latLng,
+      route: route,
     );
   }
 
   Future<void> _openSearch() async {
     final LocationModel? destination = await Navigator.of(context).push<LocationModel>(
       MaterialPageRoute<LocationModel>(
-        builder: (_) => const DestinationSearchScreen(),
+        builder: (_) => DestinationSearchScreen(
+          near: context.read<LocationProvider>().currentPosition,
+        ),
       ),
     );
 
@@ -112,24 +205,21 @@ class _HomeScreenState extends State<HomeScreen> {
     final LocationProvider location = context.read<LocationProvider>();
     final RouteProvider routes = context.read<RouteProvider>();
 
-    // Fall back to the supported-area centre so the flow stays usable when
-    // the device has no position yet or is outside Bengaluru.
-    final LatLng start = serviceAreaCenter(location.currentPosition);
+    // Route from where the user really is (routing covers India; risk
+    // estimates are added only inside Bengaluru). Without a position, fall
+    // back to central Bengaluru so the flow stays usable.
+    final LatLng start = location.currentPosition ?? developmentFallbackCenter;
 
     await routes.findRoutes(start: start, destination: destination);
     if (!mounted) return;
-
-    final RouteModel? selected = routes.selectedRoute;
-    if (selected != null) _fitRoute(selected);
+    _fitTrip();
   }
 
   Future<void> _retryRoutes() async {
     final RouteProvider routes = context.read<RouteProvider>();
     await routes.retry();
     if (!mounted) return;
-
-    final RouteModel? selected = routes.selectedRoute;
-    if (selected != null) _fitRoute(selected);
+    _fitTrip();
   }
 
   void _onRouteSelected(RouteModel route) {
@@ -141,15 +231,13 @@ class _HomeScreenState extends State<HomeScreen> {
     final RouteProvider routes = context.read<RouteProvider>();
     await routes.setPreference(preference);
     if (!mounted) return;
-
-    final RouteModel? selected = routes.selectedRoute;
-    if (selected != null) _fitRoute(selected);
+    _fitTrip();
   }
 
   void _clearDestination() {
     context.read<RouteProvider>().clearRoutes();
     final LatLng? position = context.read<LocationProvider>().currentPosition;
-    _moveCamera(serviceAreaCenter(position), 14);
+    _moveCamera(position ?? developmentFallbackCenter, 14);
   }
 
   void _showIncidentDetails(CrimeIncidentModel incident) {
@@ -170,6 +258,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final LocationProvider location = context.watch<LocationProvider>();
     final CrimeDataProvider crimeData = context.watch<CrimeDataProvider>();
     final RouteProvider routes = context.watch<RouteProvider>();
+    _syncCrimeData(location, routes);
 
     // Mark the map usable after the first build so camera calls are safe.
     if (!_mapReady) {
@@ -193,68 +282,74 @@ class _HomeScreenState extends State<HomeScreen> {
       body: Column(
         children: <Widget>[
           Expanded(
-            child: Stack(
-              children: <Widget>[
-                RouteMap(
-                  controller: _mapController,
-                  initialCenter: serviceAreaCenter(location.currentPosition),
-                  currentPosition: location.currentPosition,
-                  destination: routes.destination,
-                  routes: routes.routes,
-                  selectedRouteId: routes.selectedRoute?.id,
-                  heatmapPoints: crimeData.heatmapPoints,
-                  incidents: crimeData.incidents,
-                  showHeatmap: crimeData.showHeatmap,
-                  showIncidents: crimeData.showIncidents,
-                  onIncidentTap: _showIncidentDetails,
-                ),
-                Positioned(
-                  top: 12,
-                  left: 12,
-                  right: 12,
-                  child: DestinationSearchBar(
-                    onTap: _openSearch,
-                    destinationName: routes.destination?.name,
-                    onClear: routes.destination == null
-                        ? null
-                        : _clearDestination,
-                  ),
-                ),
-                Positioned(
-                  right: 12,
-                  bottom: 12,
-                  child: Column(
-                    children: <Widget>[
-                      MapControlButton(
-                        icon: Icons.layers_outlined,
-                        tooltip: crimeData.showHeatmap
-                            ? 'Hide crime heatmap'
-                            : 'Show crime heatmap',
-                        isActive: crimeData.showHeatmap,
-                        onPressed: crimeData.toggleHeatmap,
+            child: LayoutBuilder(
+              builder: (BuildContext context, BoxConstraints constraints) {
+                _mapSize = constraints.biggest;
+                return Stack(
+                  children: <Widget>[
+                    RouteMap(
+                      controller: _mapController,
+                      initialCenter:
+                          location.currentPosition ?? developmentFallbackCenter,
+                      currentPosition: location.currentPosition,
+                      destination: routes.destination,
+                      routes: routes.routes,
+                      selectedRouteId: routes.selectedRoute?.id,
+                      heatmapPoints: crimeData.heatmapPoints,
+                      incidents: crimeData.incidents,
+                      showHeatmap: crimeData.showHeatmap,
+                      showIncidents: crimeData.showIncidents,
+                      onIncidentTap: _showIncidentDetails,
+                    ),
+                    Positioned(
+                      top: 12,
+                      left: 12,
+                      right: 12,
+                      child: DestinationSearchBar(
+                        onTap: _openSearch,
+                        destinationName: routes.destination?.name,
+                        onClear: routes.destination == null
+                            ? null
+                            : _clearDestination,
                       ),
-                      const SizedBox(height: 8),
-                      MapControlButton(
-                        icon: Icons.place_outlined,
-                        tooltip: crimeData.showIncidents
-                            ? 'Hide crime markers'
-                            : 'Show crime markers',
-                        isActive: crimeData.showIncidents,
-                        onPressed: crimeData.toggleIncidents,
+                    ),
+                    Positioned(
+                      right: 12,
+                      bottom: 12,
+                      child: Column(
+                        children: <Widget>[
+                          MapControlButton(
+                            icon: Icons.layers_outlined,
+                            tooltip: crimeData.showHeatmap
+                                ? 'Hide crime heatmap'
+                                : 'Show crime heatmap',
+                            isActive: crimeData.showHeatmap,
+                            onPressed: crimeData.toggleHeatmap,
+                          ),
+                          const SizedBox(height: 8),
+                          MapControlButton(
+                            icon: Icons.place_outlined,
+                            tooltip: crimeData.showIncidents
+                                ? 'Hide crime markers'
+                                : 'Show crime markers',
+                            isActive: crimeData.showIncidents,
+                            onPressed: crimeData.toggleIncidents,
+                          ),
+                          const SizedBox(height: 8),
+                          MapControlButton(
+                            icon: Icons.my_location,
+                            tooltip: 'Go to current location',
+                            isBusy: location.isLoading,
+                            onPressed: _recentre,
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 8),
-                      MapControlButton(
-                        icon: Icons.my_location,
-                        tooltip: 'Go to current location',
-                        isBusy: location.isLoading,
-                        onPressed: _recentre,
-                      ),
-                    ],
-                  ),
-                ),
-                if (crimeData.showHeatmap && crimeData.heatmapPoints.isNotEmpty)
-                  const Positioned(left: 12, bottom: 12, child: MapLegend()),
-              ],
+                    ),
+                    if (crimeData.showHeatmap && crimeData.heatmapPoints.isNotEmpty)
+                      const Positioned(left: 12, bottom: 12, child: MapLegend()),
+                  ],
+                );
+              },
             ),
           ),
           _BottomPanel(
@@ -267,6 +362,7 @@ class _HomeScreenState extends State<HomeScreen> {
             onRouteSelected: _onRouteSelected,
             onPreferenceChanged: _onPreferenceChanged,
             onRetryRoutes: _retryRoutes,
+            onOpenInGoogleMaps: _openInGoogleMaps,
           ),
         ],
       ),
@@ -287,6 +383,7 @@ class _BottomPanel extends StatelessWidget {
     required this.onRouteSelected,
     required this.onPreferenceChanged,
     required this.onRetryRoutes,
+    required this.onOpenInGoogleMaps,
   });
 
   final LocationProvider location;
@@ -298,6 +395,7 @@ class _BottomPanel extends StatelessWidget {
   final ValueChanged<RouteModel> onRouteSelected;
   final ValueChanged<RoutePreference> onPreferenceChanged;
   final VoidCallback onRetryRoutes;
+  final ValueChanged<RouteModel> onOpenInGoogleMaps;
 
   @override
   Widget build(BuildContext context) {
@@ -357,8 +455,10 @@ class _BottomPanel extends StatelessWidget {
       case RouteStatus.success:
         return _RouteResults(
           routes: routes,
+          crimeData: crimeData,
           onRouteSelected: onRouteSelected,
           onPreferenceChanged: onPreferenceChanged,
+          onOpenInGoogleMaps: onOpenInGoogleMaps,
         );
 
       case RouteStatus.idle:
@@ -446,13 +546,17 @@ class _IdlePanel extends StatelessWidget {
 class _RouteResults extends StatelessWidget {
   const _RouteResults({
     required this.routes,
+    required this.crimeData,
     required this.onRouteSelected,
     required this.onPreferenceChanged,
+    required this.onOpenInGoogleMaps,
   });
 
   final RouteProvider routes;
+  final CrimeDataProvider crimeData;
   final ValueChanged<RouteModel> onRouteSelected;
   final ValueChanged<RoutePreference> onPreferenceChanged;
+  final ValueChanged<RouteModel> onOpenInGoogleMaps;
 
   @override
   Widget build(BuildContext context) {
@@ -469,6 +573,13 @@ class _RouteResults extends StatelessWidget {
           enabled: !routes.isLoading,
         ),
         const SizedBox(height: 16),
+        if (routes.coverageMessage != null) ...<Widget>[
+          EmptyMessage(
+            message: routes.coverageMessage!,
+            icon: Icons.info_outline,
+          ),
+          const SizedBox(height: 16),
+        ],
         if (recommended != null) ...<Widget>[
           RecommendationCard(
             route: recommended,
@@ -499,10 +610,14 @@ class _RouteResults extends StatelessWidget {
               isRecommended: routes.routes[i].id == recommended?.id,
               isFastest: routes.routes[i].id == fastest?.id,
               onTap: () => onRouteSelected(routes.routes[i]),
+              onOpenInGoogleMaps: () => onOpenInGoogleMaps(routes.routes[i]),
             ),
           ),
         const SizedBox(height: 12),
+        _CrimeDataNote(crimeData: crimeData),
         const _DataNote(),
+        const SizedBox(height: 8),
+        const _DataNote(text: googleMapsLimitationNote, icon: Icons.map_outlined),
       ],
     );
   }
@@ -510,23 +625,69 @@ class _RouteResults extends StatelessWidget {
 
 /// Standing reminder that everything shown is an estimate from past records.
 class _DataNote extends StatelessWidget {
-  const _DataNote();
+  const _DataNote({
+    this.text = 'Estimated risk is based on available historical crime data '
+        'and cannot guarantee future safety.',
+    this.icon = Icons.info_outline,
+  });
+
+  final String text;
+  final IconData icon;
 
   @override
   Widget build(BuildContext context) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        const Icon(Icons.info_outline, size: 15, color: AppColors.textMuted),
+        Icon(icon, size: 15, color: AppColors.textMuted),
         const SizedBox(width: 7),
         Expanded(
           child: Text(
-            'Estimated risk is based on available historical crime data and '
-            'cannot guarantee future safety.',
+            text,
             style: Theme.of(context).textTheme.bodySmall?.copyWith(height: 1.3),
           ),
         ),
       ],
     );
+  }
+}
+
+/// State of the crime layers for the trip, shown with the route results so
+/// missing data is never mistaken for low exposure.
+class _CrimeDataNote extends StatelessWidget {
+  const _CrimeDataNote({required this.crimeData});
+
+  final CrimeDataProvider crimeData;
+
+  @override
+  Widget build(BuildContext context) {
+    final List<String> withoutRecords = crimeData.endpointsWithoutRecords;
+    final Widget? note = switch (crimeData.status) {
+      CrimeDataStatus.error => ErrorMessage(
+          message: crimeData.errorMessage ??
+              'Crime information is temporarily unavailable.',
+          compact: true,
+          onRetry: crimeData.retry,
+        ),
+      CrimeDataStatus.empty => const EmptyMessage(
+          message: 'No historical crime records are available around this '
+              'trip. This means there is no data, not that the area has lower '
+              'crime exposure.',
+        ),
+      CrimeDataStatus.success when crimeData.isPartial => ErrorMessage(
+          message: crimeData.errorMessage ??
+              'Some historical crime data could not be loaded.',
+          compact: true,
+          onRetry: crimeData.retry,
+        ),
+      CrimeDataStatus.success when withoutRecords.isNotEmpty => EmptyMessage(
+          message: 'No historical crime records are available near your '
+              '${withoutRecords.join(' or ')}. This means there is no data '
+              'there, not that it has lower crime exposure.',
+        ),
+      _ => null,
+    };
+    if (note == null) return const SizedBox.shrink();
+    return Padding(padding: const EdgeInsets.only(bottom: 10), child: note);
   }
 }

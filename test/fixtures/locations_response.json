@@ -2,21 +2,84 @@
  "results": [
   {
    "name": "Koramangala",
-   "address": "Bengaluru",
-   "latitude": 12.9352,
-   "longitude": 77.6245
+   "address": "Sri Lakshmi Devi Ward, Bangalore South, Karnataka 560095",
+   "latitude": 12.9357366,
+   "longitude": 77.624081,
+   "locality": "Sri Lakshmi Devi Ward",
+   "category": "suburb",
+   "place_id": "osm:N429918282",
+   "crime_data_available": true
   },
   {
-   "name": "Koramangala 2nd Block",
-   "address": "Bengaluru",
-   "latitude": 12.9352,
-   "longitude": 77.61
+   "name": "Koramangala",
+   "address": "Devanahalli taluku, Karnataka 562110",
+   "latitude": 13.2923988,
+   "longitude": 77.7519261,
+   "locality": "Devanahalli taluku",
+   "category": "village",
+   "place_id": "osm:N3192025629",
+   "crime_data_available": true
   },
   {
-   "name": "Koramangala 3rd Block",
-   "address": "Bengaluru",
-   "latitude": 12.9279,
-   "longitude": 77.6271
+   "name": "Koramangala Kalyana Mantapa",
+   "address": "80 Feet Road, Adugodi, A Adugodi, Karnataka 560095",
+   "latitude": 12.9370255,
+   "longitude": 77.6182202,
+   "locality": "A Adugodi",
+   "category": "bus stop",
+   "place_id": "osm:N1471128637",
+   "crime_data_available": true
+  },
+  {
+   "name": "Koramangala Police Station",
+   "address": "80 Feet Road, Adugodi, A Adugodi, Karnataka 560095",
+   "latitude": 12.9410328,
+   "longitude": 77.6207095,
+   "locality": "A Adugodi",
+   "category": "bus stop",
+   "place_id": "osm:N1464962566",
+   "crime_data_available": true
+  },
+  {
+   "name": "Koramangala Depot",
+   "address": "Srinivagilu Main Road, National Games Village, Bangalore South, Karnataka 560095",
+   "latitude": 12.9407094,
+   "longitude": 77.6247519,
+   "locality": "National Games Village",
+   "category": "bus stop",
+   "place_id": "osm:N5803896296",
+   "crime_data_available": true
+  },
+  {
+   "name": "Koramangala 8th Block",
+   "address": "Koramangala Road, A Adugodi, Bangalore South, Karnataka 560030",
+   "latitude": 12.9417812,
+   "longitude": 77.6160146,
+   "locality": "A Adugodi",
+   "category": "bus stop",
+   "place_id": "osm:N2406980753",
+   "crime_data_available": true
+  },
+  {
+   "name": "Koramangala 210MLD Intermediate Sewage Pumping Stations",
+   "address": "Ejipura, Bangalore South, Karnataka",
+   "latitude": 12.9468976,
+   "longitude": 77.6236505,
+   "locality": "Ejipura",
+   "category": "industrial",
+   "place_id": "osm:W1107039355",
+   "crime_data_available": true
+  },
+  {
+   "name": "Koramangala 6th Block",
+   "address": "Sri Lakshmi Devi Ward, Bangalore South, Karnataka 560095",
+   "latitude": 12.9390255,
+   "longitude": 77.6238477,
+   "locality": "Sri Lakshmi Devi Ward",
+   "category": "neighbourhood",
+   "place_id": "osm:N9790284766",
+   "crime_data_available": true
   }
- ]
+ ],
+ "degraded": false
 }
